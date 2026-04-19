@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>JIS 慣用色轉換器 (含搜尋與複製)</title>
+    <title>JIS 傳統色彩智能轉換器</title>
     <style>
         :root {
             --primary-bg: #f5f7fa;
             --card-bg: #ffffff;
             --text-color: #333;
             --border-radius: 12px;
+            --theme-color: #5654A2; /* 桔梗色作為主題色 */
         }
 
         body {
@@ -40,25 +41,47 @@
             margin-bottom: 10px;
         }
 
-        /* 搜尋框設計 */
-        .search-box {
+        /* 智能輸入框設計 */
+        .input-section {
             grid-column: 1 / -1;
             margin-bottom: 10px;
+            position: relative;
         }
 
-        .search-box input {
+        .input-section input {
             width: 100%;
-            padding: 12px 20px;
+            padding: 15px 20px;
             font-size: 16px;
             border: 2px solid #ddd;
             border-radius: 8px;
             box-sizing: border-box;
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
-        .search-box input:focus {
-            border-color: #5654A2; /* 桔梗色 */
+        .input-section input:focus {
+            border-color: var(--theme-color);
+            box-shadow: 0 4px 12px rgba(86, 84, 162, 0.15);
+        }
+
+        .status-badge {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #4CAF50;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .status-badge.active {
+            opacity: 1;
         }
 
         /* 左側：色彩網格 */
@@ -86,9 +109,10 @@
             text-align: center;
         }
 
-        .color-item:hover { 
+        .color-item:hover, .color-item.selected { 
             transform: translateY(-3px); 
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-color: var(--theme-color);
         }
 
         .color-swatch { height: 65px; width: 100%; }
@@ -119,6 +143,14 @@
             font-weight: bold;
             color: #fff;
             text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            flex-direction: column;
+        }
+        
+        .preview-romaji {
+            font-size: 14px;
+            font-weight: normal;
+            margin-top: 5px;
+            opacity: 0.9;
         }
 
         .info-row {
@@ -170,12 +202,38 @@
             color: white;
         }
 
-        /* 隱藏無結果提示 */
         #noResults {
             display: none;
             text-align: center;
             padding: 20px;
             color: #888;
+        }
+
+        /* 擴充按鈕設計 */
+        .action-buttons {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 5px;
+        }
+
+        .action-btn {
+            background-color: var(--theme-color);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .action-btn:hover {
+            background-color: #434185;
+            transform: translateY(-1px);
         }
     </style>
 </head>
@@ -183,28 +241,44 @@
 
 <div class="container">
     <header>
-        <h1 style="margin: 0; color: #2c3e50;">JIS 慣用色轉換器</h1>
-        <p style="color: #7f8c8d; margin-top: 5px;">點擊色塊即可自動轉換 RGB / CMYK，並支援快速複製</p>
+        <h1 style="margin: 0; color: #2c3e50;">JIS 傳統色彩智能轉換器</h1>
+        <p style="color: #7f8c8d; margin-top: 5px;">輸入中文名稱或羅馬拼音，立即自動轉換參數</p>
     </header>
 
-    <div class="search-box">
-        <input type="text" id="searchInput" placeholder="搜尋 JIS 顏色名稱 (例如：櫻色、瑠璃色)...">
+    <!-- 匯入功能區 -->
+    <div class="action-buttons">
+        <label for="csvUpload" class="action-btn">
+            📁 匯入自訂 CSV 色表
+        </label>
+        <input type="file" id="csvUpload" accept=".csv" style="display: none;">
     </div>
 
+    <!-- 智能輸入框 (包含 datalist 提供下拉提示) -->
+    <div class="input-section">
+        <input type="text" id="colorInput" list="jisList" placeholder="輸入名稱、拼音或 CMYK (如 80,90,0,0)..." autocomplete="off">
+        <datalist id="jisList"></datalist>
+        <div id="matchStatus" class="status-badge">已自動轉換 ✓</div>
+    </div>
+
+    <!-- 左側：色彩選擇網格 -->
     <div class="color-list-container">
         <div class="color-grid" id="colorGrid"></div>
-        <div id="noResults">找不到相符的顏色</div>
+        <div id="noResults">找不到相符的顏色，請嘗試其他名稱或從選單挑選。</div>
     </div>
 
+    <!-- 右側：轉換結果面板 -->
     <div class="display-panel">
-        <div class="preview-box" id="previewBox">預覽</div>
+        <div class="preview-box" id="previewBox">
+            <span id="previewName">預覽</span>
+            <span id="previewRomaji" class="preview-romaji"></span>
+        </div>
         
         <div class="info-row">
             <div class="info-content">
                 <span class="info-label">JIS 名稱</span>
                 <span class="info-value" id="valName">---</span>
             </div>
-            </div>
+        </div>
 
         <div class="info-row">
             <div class="info-content">
@@ -233,36 +307,120 @@
 </div>
 
 <script>
-    // 1. JIS 標準色彩資料庫 (擴充版)
+    // 1. JIS 增強版資料庫 (加入 romaji 欄位方便拼音輸入)
     const jisColors = [
-        { name: "櫻色", hex: "#FEF4F4" },
-        { name: "鴇色", hex: "#F4B3C2" },
-        { name: "珊瑚色", hex: "#F596AA" },
-        { name: "桃色", hex: "#F58F98" },
-        { name: "牡丹色", hex: "#EA66A6" },
-        { name: "紅赤", hex: "#D9333F" },
-        { name: "臙脂", hex: "#B94047" },
-        { name: "朱色", hex: "#EB6101" },
-        { name: "山吹色", hex: "#F8B500" },
-        { name: "黃金", hex: "#E6B422" },
-        { name: "刈安色", hex: "#F5E56B" },
-        { name: "萌黃", hex: "#AACF53" },
-        { name: "若草色", hex: "#C3D825" },
-        { name: "綠", hex: "#3EB370" },
-        { name: "常磐色", hex: "#007B43" },
-        { name: "水色", hex: "#BCE2E8" },
-        { name: "露草色", hex: "#38A1DB" },
-        { name: "瑠璃色", hex: "#1E50A2" },
-        { name: "紺青", hex: "#192F60" },
-        { name: "藤色", hex: "#BBBCDE" },
-        { name: "桔梗色", hex: "#5654A2" },
-        { name: "紫", hex: "#884898" },
-        { name: "亞麻色", hex: "#D6C6AF" },
-        { name: "鳶色", hex: "#95483F" },
-        { name: "銀鼠", hex: "#AFAFB0" },
-        { name: "墨色", hex: "#313131" },
-        { name: "漆黑", hex: "#0D0015" }
+        { name: "櫻色", romaji: "sakura", hex: "#FEF4F4" },
+        { name: "鴇色", romaji: "toki", hex: "#F4B3C2" },
+        { name: "珊瑚色", romaji: "sango", hex: "#F596AA" },
+        { name: "桃色", romaji: "momo", hex: "#F58F98" },
+        { name: "牡丹色", romaji: "botan", hex: "#EA66A6" },
+        { name: "紅赤", romaji: "beniaka", hex: "#D9333F" },
+        { name: "臙脂", romaji: "enji", hex: "#B94047" },
+        { name: "朱色", romaji: "shu", hex: "#EB6101" },
+        { name: "山吹色", romaji: "yamabuki", hex: "#F8B500" },
+        { name: "黃金", romaji: "ougon", hex: "#E6B422" },
+        { name: "刈安色", romaji: "kariyasu", hex: "#F5E56B" },
+        { name: "萌黃", romaji: "moegi", hex: "#AACF53" },
+        { name: "若草色", romaji: "wakakusa", hex: "#C3D825" },
+        { name: "綠", romaji: "midori", hex: "#3EB370" },
+        { name: "常磐色", romaji: "tokiwa", hex: "#007B43" },
+        { name: "水色", romaji: "mizu", hex: "#BCE2E8" },
+        { name: "露草色", romaji: "tsuyukusa", hex: "#38A1DB" },
+        { name: "瑠璃色", romaji: "ruri", hex: "#1E50A2" },
+        { name: "紺青", romaji: "konjo", hex: "#192F60" },
+        { name: "藤色", romaji: "fuji", hex: "#BBBCDE" },
+        { name: "桔梗色", romaji: "kikyo", hex: "#5654A2" },
+        { name: "紫", romaji: "murasaki", hex: "#884898" },
+        { name: "亞麻色", romaji: "ama", hex: "#D6C6AF" },
+        { name: "鳶色", romaji: "tobi", hex: "#95483F" },
+        { name: "銀鼠", romaji: "ginnezu", hex: "#AFAFB0" },
+        { name: "墨色", romaji: "sumi", hex: "#313131" },
+        { name: "漆黑", romaji: "shikkoku", hex: "#0D0015" },
+        { name: "三色堇色", romaji: "pansy", hex: "#432471", cmyk: [80, 90, 0, 0] }
     ];
+
+    // 將資料庫初始化邏輯包裝成函數，方便未來重新匯入資料
+    const datalist = document.getElementById('jisList');
+    
+    function initDatabase() {
+        datalist.innerHTML = ""; // 清空現有下拉選單
+        
+        jisColors.forEach(color => {
+            if (!color.cmyk) {
+                const rgb = hexToRgb(color.hex);
+                const calc = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+                color.cmyk = [calc.c, calc.m, calc.y, calc.k];
+            }
+            color.searchTags = [
+                color.name,
+                color.romaji.toLowerCase(),
+                color.hex.toLowerCase(),
+                color.cmyk.join(','),
+                color.cmyk.join(', ')
+            ].join('||');
+
+            // 重建下拉選單
+            const option = document.createElement('option');
+            option.value = color.name;
+            option.text = `(${color.romaji})`;
+            datalist.appendChild(option);
+        });
+    }
+
+    // 首次執行初始化
+    initDatabase();
+
+    // 處理 CSV 檔案上傳
+    document.getElementById('csvUpload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const text = event.target.result;
+            const rows = text.split(/\r?\n/); // 分割每一行
+            let addedCount = 0;
+
+            // 從第二行開始讀取 (假設第一行是標題: 名稱,拼音,HEX,C,M,Y,K)
+            for (let i = 1; i < rows.length; i++) {
+                const cols = rows[i].split(',');
+                if (cols.length < 3) continue; // 至少需要 名稱,拼音,HEX
+
+                const name = cols[0].trim();
+                const romaji = cols[1].trim();
+                const hex = cols[2].trim();
+                
+                if (!name || !hex.startsWith('#')) continue; // 基本格式防呆
+
+                const newColor = { name, romaji, hex };
+
+                // 檢查是否有提供精準的 C, M, Y, K 欄位 (第4~7欄)
+                if (cols.length >= 7) {
+                    newColor.cmyk = [
+                        parseInt(cols[3]) || 0,
+                        parseInt(cols[4]) || 0,
+                        parseInt(cols[5]) || 0,
+                        parseInt(cols[6]) || 0
+                    ];
+                }
+
+                jisColors.push(newColor);
+                addedCount++;
+            }
+
+            if (addedCount > 0) {
+                initDatabase(); // 重新計算搜尋標籤與下拉選單
+                renderGrid();   // 重新渲染網格
+                alert(`成功匯入 ${addedCount} 筆新顏色！你可以開始搜尋了。`);
+            } else {
+                alert('沒有找到有效資料。請確保 CSV 格式為：名稱,拼音,HEX,C,M,Y,K');
+            }
+            
+            // 清除 input 數值，讓下次可以重複上傳同一個檔案
+            e.target.value = ''; 
+        };
+        reader.readAsText(file);
+    });
 
     // 2. 轉換數學邏輯
     function hexToRgb(hex) {
@@ -293,7 +451,6 @@
     // 3. UI 更新邏輯
     function updateDisplay(colorObj) {
         const rgb = hexToRgb(colorObj.hex);
-        const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
 
         // 判斷背景深淺來決定預覽文字的顏色
         const brightness = (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000;
@@ -302,24 +459,36 @@
         const previewBox = document.getElementById('previewBox');
         previewBox.style.backgroundColor = colorObj.hex;
         previewBox.style.color = textColor;
-        previewBox.innerText = colorObj.name;
+        
+        document.getElementById('previewName').innerText = colorObj.name;
+        document.getElementById('previewRomaji').innerText = colorObj.romaji;
 
         document.getElementById('valName').innerText = colorObj.name;
         document.getElementById('valHex').innerText = colorObj.hex.toUpperCase();
         document.getElementById('valRgb').innerText = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-        document.getElementById('valCmyk').innerText = `C:${cmyk.c}% M:${cmyk.m}% Y:${cmyk.y}% K:${cmyk.k}%`;
+        document.getElementById('valCmyk').innerText = `C:${colorObj.cmyk[0]}% M:${colorObj.cmyk[1]}% Y:${colorObj.cmyk[2]}% K:${colorObj.cmyk[3]}%`;
+
+        // 視覺化標記網格中被選中的項目
+        document.querySelectorAll('.color-item').forEach(item => {
+            item.classList.remove('selected');
+            if(item.dataset.name === colorObj.name) {
+                item.classList.add('selected');
+            }
+        });
     }
 
-    // 4. 渲染網格與搜尋過濾功能
+    // 4. 渲染網格與輸入智能判定功能
     const grid = document.getElementById('colorGrid');
-    const searchInput = document.getElementById('searchInput');
+    const colorInput = document.getElementById('colorInput');
     const noResults = document.getElementById('noResults');
+    const matchStatus = document.getElementById('matchStatus');
 
     function renderGrid(filterText = "") {
-        grid.innerHTML = ""; // 清空現有網格
+        grid.innerHTML = ""; 
+        const lowerFilter = filterText.toLowerCase().replace(/\s+/g, '');
         
         const filteredColors = jisColors.filter(color => 
-            color.name.includes(filterText)
+            color.searchTags.replace(/\s+/g, '').includes(lowerFilter)
         );
 
         if (filteredColors.length === 0) {
@@ -329,40 +498,77 @@
             filteredColors.forEach(color => {
                 const div = document.createElement('div');
                 div.className = 'color-item';
+                div.dataset.name = color.name; // 綁定名稱以便反查
                 div.innerHTML = `
                     <div class="color-swatch" style="background-color: ${color.hex}"></div>
                     <div class="color-name">${color.name}</div>
                 `;
-                div.onclick = () => updateDisplay(color);
+                div.onclick = () => {
+                    updateDisplay(color);
+                    colorInput.value = color.name; // 點擊時同步回填輸入框
+                };
                 grid.appendChild(div);
             });
         }
     }
 
-    // 監聽搜尋框輸入事件
-    searchInput.addEventListener('input', (e) => {
-        renderGrid(e.target.value.trim());
+    // 監聽輸入框的輸入事件
+    let typingTimer;
+    colorInput.addEventListener('input', (e) => {
+        const val = e.target.value.trim();
+        const lowerVal = val.toLowerCase().replace(/\s+/g, '');
+        
+        // 1. 更新過濾網格
+        renderGrid(val);
+
+        // 2. 自動精準匹配與轉換 (使用者輸入完整名稱或羅馬拼音時觸發)
+        const exactMatch = jisColors.find(color => 
+            color.name === val || 
+            color.romaji.toLowerCase() === val.toLowerCase() ||
+            color.cmyk.join(',') === lowerVal
+        );
+
+        if (exactMatch) {
+            updateDisplay(exactMatch);
+            
+            // 顯示「已自動轉換」的小提示，過2秒消失
+            matchStatus.classList.add('active');
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(() => {
+                matchStatus.classList.remove('active');
+            }, 2000);
+        } else {
+            matchStatus.classList.remove('active');
+        }
     });
 
     // 5. 複製到剪貼簿功能
     function copyText(elementId, btnElement) {
         const textToCopy = document.getElementById(elementId).innerText;
-        
-        // 使用 Clipboard API
         navigator.clipboard.writeText(textToCopy).then(() => {
-            // 視覺回饋：更改按鈕文字與樣式
             const originalText = btnElement.innerText;
             btnElement.innerText = "已複製！";
             btnElement.classList.add("copied");
-
-            // 1.5秒後恢復原狀
             setTimeout(() => {
                 btnElement.innerText = "複製";
                 btnElement.classList.remove("copied");
             }, 1500);
         }).catch(err => {
             console.error('複製失敗:', err);
-            alert("複製失敗，請手動複製");
+            // iFrame 降級方案：
+            const tempInput = document.createElement("input");
+            tempInput.value = textToCopy;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            
+            btnElement.innerText = "已複製！";
+            btnElement.classList.add("copied");
+            setTimeout(() => {
+                btnElement.innerText = "複製";
+                btnElement.classList.remove("copied");
+            }, 1500);
         });
     }
 
